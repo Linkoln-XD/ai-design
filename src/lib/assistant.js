@@ -93,7 +93,7 @@ function isWhenAnswer(text) {
     )
     .replace(/\s+/g, " ")
     .trim();
-  return stripped.length === 0 && extractTime(text);
+  return stripped.length === 0 && text.length > 0;
 }
 
 function isListCue(text) {
@@ -241,15 +241,14 @@ function parseMeeting(text, today) {
   }
 
   const date = when.date ? toISODate(when.date) : null;
-  if (!when.time) {
+  if (!when.time || !date) {
     return {
       type: "clarify",
       draft: {
         type: "meeting",
         title,
-        date: date ?? toISODate(addDays(today, 1)),
-        assumedDate: !date,
-        time: null,
+        date,
+        time: when.time,
       },
     };
   }
@@ -341,6 +340,12 @@ function rangeBounds(range, today, explicitDate) {
   };
 }
 
+function clarifyCopy(draft, today) {
+  const question = !draft.date && !draft.time ? "На какой день и время?" : !draft.date ? "На какой день?" : "На какое время?";
+  const details = [draft.date && formatWhen(draft.date, today), draft.time].filter(Boolean).join(", ");
+  return `${question} «${draft.title}»${details ? ` — ${details}` : ""} — я пока не создаю. Можно посмотреть планы и затем продолжить или отменить создание.`;
+}
+
 function applyParsed(parsed, { records, today, makeId }) {
   if (parsed.type === "unknown") {
     return {
@@ -355,17 +360,10 @@ function applyParsed(parsed, { records, today, makeId }) {
   }
 
   if (parsed.type === "clarify") {
-    const when = formatWhen(parsed.draft.date, today);
-    const assumption = parsed.draft.assumedDate ? ` Дату не назвали, пока беру ${when}.` : "";
     return {
       records,
       pending: { type: "meeting", draft: parsed.draft },
-      message: message(
-        `На какое время?${assumption} «${parsed.draft.title}» — ${when} — я пока не создаю.`,
-        [],
-        "clarify",
-        true,
-      ),
+      message: message(clarifyCopy(parsed.draft, today), [], "clarify", true),
     };
   }
 
@@ -382,6 +380,7 @@ function applyParsed(parsed, { records, today, makeId }) {
     const bounds = rangeBounds(parsed.range, today, parsed.date);
     const found = sortRecords(
       records.filter((item) => {
+        if (item.completed) return false;
         if (!item.date || item.date < bounds.start || item.date > bounds.end) return false;
         if (parsed.types && !parsed.types.includes(item.type)) return false;
         return true;
@@ -468,38 +467,19 @@ export function answer({ text, today, records, pending, makeId }) {
 
     if (isWhenAnswer(normalized)) {
       const when = parseWhen(normalized, today);
-      const date = when.date ? toISODate(when.date) : pending.draft.date;
-      const record = {
-        ...pending.draft,
-        id: makeId(),
-        date,
-        time: when.time,
-        seeded: false,
-        assumedDate: undefined,
-      };
-      return {
-        records: [...records, record],
-        pending: null,
-        message: message(createCopy(record, today), [record], "success"),
-      };
+      const draft = { ...pending.draft, date: when.date ? toISODate(when.date) : pending.draft.date, time: when.time || pending.draft.time };
+      if (!draft.date || !draft.time) return applyParsed({ type: "clarify", draft }, { records, today, makeId });
+      const record = { ...draft, id: makeId(), seeded: false };
+      return { records: [...records, record], pending: null, message: message(createCopy(record, today), [record], "success") };
     }
 
     const parsed = interpret(normalized, today);
     if (parsed.type === "unknown") {
-      const when = formatWhen(pending.draft.date, today);
-      return {
-        records,
-        pending,
-        message: message(
-          `Пока встреча не создана. Напишите время, например «в 15:00», или отмените создание. Жду время для «${pending.draft.title}» — ${when}.`,
-          [],
-          "clarify",
-          true,
-        ),
-      };
+      return { records, pending, message: message(clarifyCopy(pending.draft, today), [], "clarify", true) };
     }
 
     const next = applyParsed(parsed, { records, today, makeId });
+    if (parsed.type === "list" || parsed.type === "search") return { ...next, pending };
     if (next.pending) return next;
     return {
       ...next,

@@ -1,7 +1,9 @@
+import { Planner, RecordEditor } from "./components/Planner.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { answer, cancelPending } from "./lib/assistant.js";
 import { emptyDayQuestion, formatWhen, startOfDay } from "./lib/dates.js";
 import { HINTS, SHORTCUTS, VOICE_LINES, WELCOME_MORE, WELCOME_PRIMARY } from "./lib/scenarios.js";
+import { useInstall } from "./lib/useInstall.js";
 import { startSpeech } from "./lib/speech.js";
 import { emptyState, loadState, saveState } from "./lib/storage.js";
 import { Composer, MessageList, ShortcutList, Welcome } from "./components/ChatParts.jsx";
@@ -25,6 +27,10 @@ function withEmptyDay(lines, question) {
 }
 
 export default function App() {
+  const installation = useInstall();
+  const [chatEditor, setChatEditor] = useState(null);
+  const [chatSaved, setChatSaved] = useState("");
+  const [mobileView, setMobileView] = useState("chat");
   const today = useMemo(() => startOfDay(new Date()), []);
   const initial = useMemo(() => loadState(today), [today]);
   const [onboardingDone, setOnboardingDone] = useState(initial.onboardingDone);
@@ -77,7 +83,37 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ block: "end", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [messages, phase, hintId, pending, unheard]);
 
+  // Safari keeps the layout viewport tall when the on-screen keyboard opens.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    function resizeViewport() {
+      if (viewport.scale !== 1 || Math.abs(viewport.width - document.documentElement.clientWidth) > 1) {
+        document.documentElement.style.removeProperty("--viewport-height");
+        document.documentElement.style.removeProperty("--viewport-top");
+        return;
+      }
+      document.documentElement.style.setProperty("--viewport-height", `${viewport.height}px`);
+      document.documentElement.style.setProperty("--viewport-top", `${viewport.offsetTop}px`);
+    }
+    resizeViewport();
+    viewport.addEventListener("resize", resizeViewport);
+    viewport.addEventListener("scroll", resizeViewport);
+    return () => {
+      viewport.removeEventListener("resize", resizeViewport);
+      viewport.removeEventListener("scroll", resizeViewport);
+      document.documentElement.style.removeProperty("--viewport-height");
+      document.documentElement.style.removeProperty("--viewport-top");
+    };
+  }, []);
+
   useEffect(() => () => window.clearTimeout(timerRef.current), []);
+
+  function saveRecord(record) {
+    const saved = record.id ? record : { ...record, id: crypto.randomUUID(), seeded: false };
+    setRecords(items => record.id ? items.map(item => item.id === record.id ? saved : item) : [...items, saved]);
+    return saved;
+  }
 
   function focusInput() {
     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -86,6 +122,7 @@ export default function App() {
   function submitText(raw, { echoUser = true } = {}) {
     const text = raw.trim();
     if (!text || phaseRef.current === "processing" || phaseRef.current === "recording" || phaseRef.current === "recognizing") return;
+    inputRef.current?.blur();
     phaseRef.current = "processing";
     setDraft("");
     setHintId(null);
@@ -149,6 +186,11 @@ export default function App() {
   }
 
   function chooseShortcut(shortcut) {
+    if (shortcut.hint === "task" || shortcut.hint === "meeting") {
+      setChatSaved("");
+      setChatEditor({ type: shortcut.hint, title: "", date: "", time: "", completed: false });
+      return;
+    }
     if (shortcut.submit) {
       submitText(shortcut.submit);
       return;
@@ -243,7 +285,7 @@ export default function App() {
   }
 
   function defaultLine() {
-    if (pending) return "В 15:00";
+    if (pending) return pending.draft.date ? "В 15:00" : "Завтра в 15:00";
     if (hintId === "task") return voiceLines[0];
     if (hintId === "meeting") return voiceLines[2];
     if (hintId === "search") return "Найди задачу про презентацию";
@@ -251,18 +293,21 @@ export default function App() {
   }
 
   if (!onboardingDone) {
-    return <Onboarding onDone={() => setOnboardingDone(true)} />;
+    return <Onboarding installation={installation} onDone={() => setOnboardingDone(true)} />;
   }
 
   return (
-    <div className="shell">
-      <aside className="rail">
-        <p className="rail__label">Быстрые действия</p>
-        <p className="rail__note">
-          Ответы подготовлены заранее. Это не ИИ, микрофон и уведомления не работают по-настоящему.
-        </p>
-        <ShortcutList shortcuts={SHORTCUTS} hint={hintId} onShortcut={chooseShortcut} orientation="vertical" />
-      </aside>
+    <div className={`shell workspace workspace--${mobileView}`}>
+      <nav className="workspace-nav" aria-label="Разделы приложения">
+        <button aria-pressed={mobileView === "chat"} onClick={() => setMobileView("chat")}>Чат</button>
+        <button aria-pressed={mobileView === "plans"} onClick={() => setMobileView("plans")}>Мои планы</button>
+      </nav>
+      <Planner records={records} today={today}
+        onSave={saveRecord}
+        onToggle={id => setRecords(items => items.map(item => item.id === id ? { ...item, completed: !item.completed } : item))}
+        onDelete={id => setRecords(items => items.filter(item => item.id !== id))}
+        onRestore={record => setRecords(items => items.some(item => item.id === record.id) ? items : [...items, record])}
+      />
 
       <div className="stage">
         <a className="skip" href="#request">
@@ -293,12 +338,13 @@ export default function App() {
             />
           )}
           <MessageList
-            messages={messages}
+            messages={messages.map(message => ({ ...message, cards: message.cards?.map(card => records.find(record => record.id === card.id) || { ...card, deleted: true }) }))}
             today={today}
             pending={pending}
             phase={phase}
             speakingId={speakingId}
             speechSimulated={speechSimulated}
+            onEdit={record => { setChatSaved(""); setChatEditor(record); }}
             onSpeak={toggleSpeak}
             onRetry={retry}
             onCancel={cancelDraft}
@@ -310,7 +356,9 @@ export default function App() {
           <div className="mobile-shortcuts">
             <ShortcutList shortcuts={SHORTCUTS} hint={hintId} onShortcut={chooseShortcut} />
           </div>
+        {chatSaved && <div className="undo-notice" role="status"><span>{chatSaved}</span><button className="icon-button" aria-label="Скрыть сообщение о сохранении" onClick={() => setChatSaved("")}>×</button></div>}
         <Composer
+          today={today}
           draft={draft}
           hint={hint}
           pending={pending}
@@ -334,6 +382,7 @@ export default function App() {
         </div>
       </div>
 
+      {chatEditor && <RecordEditor record={chatEditor} onClose={() => setChatEditor(null)} onSave={record => { const saved = saveRecord(record); if (!record.id) setMessages(items => [...items, { id: crypto.randomUUID(), role: "assistant", text: "Запись сохранена в ваших планах.", cards: [saved], tone: "success" }]); setChatEditor(null); setChatSaved(`Сохранено: ${record.title}`); }} />}
       {phase === "recording" && (
         <RecordingSheet
           lines={voiceLines}
@@ -405,6 +454,26 @@ export default function App() {
           <p>
             История и записи хранятся только в этом браузере. Голос, поиск и ответы — заранее подготовленные сценарии, не живой ассистент.
           </p>
+          <section className="install-card" aria-labelledby="install-title">
+            <h3 id="install-title">{installation.installed ? "Приложение установлено" : "На домашний экран"}</h3>
+            {installation.installed ? (
+              <p>Открывайте «Ассистент» по иконке на домашнем экране.</p>
+            ) : (
+              <>
+                <p>Запускайте ассистента по иконке, без адресной строки браузера.</p>
+                {installation.available && (
+                  <button type="button" className="button" onClick={installation.install} disabled={installation.installing}>
+                    Установить приложение
+                  </button>
+                )}
+                <ol className="install-steps">
+                  <li><strong>iPhone:</strong> откройте сайт в Safari → «Поделиться» → «На экран Домой». Если есть переключатель «Открывать как веб-приложение», включите его.</li>
+                  <li><strong>Android:</strong> откройте сайт в Chrome → меню ⋮ → «Установить приложение» или «Добавить на главный экран».</li>
+                </ol>
+                <p>После добавления закройте вкладку и запустите приложение по новой иконке. Для демо пока нужен интернет.</p>
+              </>
+            )}
+          </section>
           {confirmReset ? (
             <div className="confirm">
               <p>Сбросить историю и вернуть демонстрационные записи?</p>

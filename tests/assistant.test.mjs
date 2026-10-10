@@ -103,14 +103,17 @@ test("отмена незавершённой встречи ничего не �
   assert.equal(message.cards.length, 0);
 });
 
-test("другой запрос отменяет черновик и не создаёт встречу", () => {
+test("просмотр планов сохраняет черновик встречи", () => {
   const state = fresh();
   const before = state.records.length;
   ask("Поставь встречу с Иваном завтра", state);
   const message = ask("Что у меня сегодня?", state);
-  assert.equal(state.pending, null);
+  assert.equal(state.pending.draft.title, "Встреча с Иваном");
   assert.equal(state.records.length, before);
-  assert.match(message.text, /Незавершённую встречу не сохранила/);
+  ask("Найди задачу про письма", state);
+  ask("В 15:00", state);
+  assert.equal(state.records.length, before + 1);
+  assert.equal(state.records.at(-1).title, "Встреча с Иваном");
   assert.ok(message.cards.length > 0);
 });
 
@@ -193,4 +196,26 @@ test("созданная задача находится поиском", () => 
   assert.equal(message.cards.length, 1);
   assert.equal(message.cards[0].title, "Отправить отчёт");
   assert.equal(message.cards[0].time, null);
+});
+
+
+test("дата встречи не зависит от порядка уточнения", () => {
+  for (const lines of [
+    ["Добавь встречу с командой в 15:00", "Завтра"],
+    ["Добавь встречу с командой", "В 15:00", "Завтра"],
+    ["Добавь встречу с командой", "Завтра", "В 15:00"],
+  ]) {
+    const state = fresh();
+    const before = state.records.length;
+    for (const line of lines.slice(0, -1)) {
+      ask(line, state);
+      assert.equal(state.records.length, before);
+      assert.ok(state.pending);
+    }
+    ask(lines.at(-1), state);
+    assert.equal(state.records.length, before + 1);
+    assert.equal(state.records.at(-1).date, "2026-10-08");
+    assert.equal(state.records.at(-1).time, "15:00");
+    assert.equal(state.pending, null);
+  }
 });

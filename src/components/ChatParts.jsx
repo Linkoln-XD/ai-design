@@ -1,3 +1,4 @@
+import { formatWhen } from "../lib/dates.js";
 import { useEffect } from "react";
 import { RecordCard } from "./RecordCard.jsx";
 import { MicIcon, SendIcon, StopIcon, VolumeIcon } from "./icons.jsx";
@@ -9,6 +10,7 @@ export function MessageList({
   phase,
   speakingId,
   speechSimulated,
+  onEdit,
   onSpeak,
   onRetry,
   onCancel,
@@ -26,7 +28,7 @@ export function MessageList({
                 <ul className="records">
                   {message.cards.map((record) => (
                     <li key={record.id}>
-                      <RecordCard record={record} today={today} />
+                      <RecordCard record={record} today={today} onEdit={onEdit} />
                     </li>
                   ))}
                 </ul>
@@ -50,7 +52,7 @@ export function MessageList({
                     Повторить
                   </button>
                 )}
-                {message.clarify && pending && (
+                {message.clarify && pending && message === messages.at(-1) && (
                   <button type="button" className="button button--quiet button--small" onClick={onCancel}>
                     Отменить создание
                   </button>
@@ -117,7 +119,7 @@ export function ShortcutList({ shortcuts, hint, onShortcut, orientation = "horiz
           key={shortcut.id}
           type="button"
           className="shortcut"
-          aria-pressed={shortcut.hint ? hint === shortcut.hint : undefined}
+          aria-pressed={shortcut.hint === "search" ? hint === shortcut.hint : undefined}
           onClick={() => onShortcut(shortcut)}
         >
           {shortcut.label}
@@ -129,6 +131,7 @@ export function ShortcutList({ shortcuts, hint, onShortcut, orientation = "horiz
 
 export function Composer({
   draft,
+  today,
   hint,
   pending,
   recognized,
@@ -145,7 +148,7 @@ export function Composer({
   onRetryVoice,
   micUnavailable,
 }) {
-  const placeholder = hint?.placeholder || (pending ? "Напишите время, например в 15:00" : "Напишите запрос");
+  const placeholder = pending ? (!pending.draft.date ? "Например: завтра в 15:00" : "Например: в 15:00") : hint?.placeholder || "Напишите запрос";
   const busy = phase === "processing" || phase === "recognizing" || phase === "recording";
 
   useEffect(() => {
@@ -157,9 +160,10 @@ export function Composer({
 
   return (
     <div className="composer-stack">
+      <div className="composer-notices">
       {pending && (
         <div className="notice" role="status">
-          <p>Встреча ещё не создана. Напишите время или отмените.</p>
+          <div><p className="notice__title">{pending.draft.title}</p><p>{!pending.draft.date ? "Укажите день" : formatWhen(pending.draft.date, today)}{!pending.draft.time ? " и время" : ` · ${pending.draft.time}`}. Встреча ещё не создана.</p></div>
           <button type="button" className="button button--quiet button--small" onClick={onCancelPending}>
             Отменить
           </button>
@@ -208,8 +212,9 @@ export function Composer({
           Микрофон недоступен. Запрос можно отправить текстом.
         </p>
       )}
+      </div>
       <form
-        className="composer"
+        className={`composer ${draft.trim() ? "composer--has-draft" : ""}`}
         aria-label="Ввод запроса"
         onSubmit={(event) => {
           event.preventDefault();
@@ -241,9 +246,6 @@ export function Composer({
             }
           }}
         />
-        <button type="submit" className="send" disabled={busy || !draft.trim()} aria-label="Отправить">
-          <SendIcon />
-        </button>
         <button
           type="button"
           className="mic"
@@ -254,6 +256,10 @@ export function Composer({
         >
           <MicIcon />
         </button>
+        <button type="submit" className="send" disabled={busy || !draft.trim()} aria-label="Отправить">
+          <SendIcon />
+        </button>
+
       </form>
     </div>
   );

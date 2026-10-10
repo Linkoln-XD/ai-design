@@ -6,12 +6,13 @@ const TYPE_LABEL = {
   meeting: "Встреча",
 };
 
-export function RecordCard({ record, today }) {
+export function RecordCard({ record, today, onEdit }) {
   const dateLabel = record.date ? formatWhen(record.date, today) : "";
 
   return (
     <article className={`record record--${record.type}`}>
       <p className="record__type">{TYPE_LABEL[record.type]}</p>
+      {(record.completed || record.deleted) && <p className="record__note">{record.deleted ? "Удалено из планов" : "Выполнено"}</p>}
       <h3 className="record__title">{record.title}</h3>
       {record.type === "meeting" ? (
         <div className="record__when">
@@ -30,6 +31,7 @@ export function RecordCard({ record, today }) {
           )}
         </div>
       )}
+      {!record.deleted && onEdit && <button className="button button--quiet button--small record__edit" aria-label={`Изменить: ${record.title}`} onClick={() => onEdit(record)}>Изменить</button>}
       {record.type === "reminder" && <p className="record__note">Уведомление не отправляется</p>}
     </article>
   );
