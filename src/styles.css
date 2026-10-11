@@ -854,3 +854,14 @@ h1, h2, .record__clock {
 .install-visual small { color: var(--muted); margin-right: 12px; }
 .install-details summary { cursor: pointer; color: var(--muted); padding: 12px 0; min-height: 44px; font-size: .85rem; }
 .install-details p { font-size: .85rem; line-height: 1.5; color: var(--muted); }
+
+.connection-region { position: fixed; z-index: 11000; top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; pointer-events: none; display: flex; justify-content: center; }
+.connection-notice { display: flex; align-items: center; gap: 12px; max-width: 390px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 18px; background: #29221d; box-shadow: 0 8px 30px #0006; animation: connection-enter .25s ease-out; }
+.connection-notice__icon { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border: 1px solid currentColor; border-radius: 50%; color: var(--coral); font-weight: 700; }
+.connection-notice strong { font-size: .9rem; }
+.connection-notice p { font-size: .78rem; color: var(--muted); margin-top: 3px; }
+.connection-notice--restored .connection-notice__icon { color: #aed8b2; }
+@keyframes connection-enter { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .connection-notice { animation: none; } }
+.connection-notice { pointer-events: auto; }
+.connection-notice__close { flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 24px; }

@@ -16,7 +16,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;600&display=swap"
-      rel="stylesheet"
+      rel="stylesheet" media="print" onload="this.media='all'"
     />
     <link
       rel="icon"
@@ -24,6 +24,33 @@
     />
   </head>
   <body>
+    <style>
+      html,body { margin:0; background:#0c0b0a; color:#f6f1eb; }
+      #boot-screen { position:fixed; inset:0; z-index:10000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px; font-family:system-ui,sans-serif; text-align:center; background:#0c0b0a; }
+      #boot-screen svg { width:80px; height:80px; color:#ff6a57; }
+      #boot-screen h1 { margin:0; font-size:30px; letter-spacing:-1px; }
+      #boot-screen p { margin:0; color:#c9bfb6; line-height:1.5; }
+      .boot-progress { width:40px; height:4px; background:#ff6a57; border-radius:4px; animation:boot-pulse 1.2s ease-in-out infinite alternate; }
+      #boot-retry { color:#0c0b0a; background:#ff6a57; border:0; border-radius:24px; min-height:44px; padding:12px 24px; font:inherit; cursor:pointer; }
+      @keyframes boot-pulse { to { opacity:.3; transform:scaleX(.5); } }
+      @media(prefers-reduced-motion:reduce) { .boot-progress { animation:none; } }
+    </style>
+    <div id="boot-screen" role="status" aria-live="polite">
+      <svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><path d="M27 8C11 8 8 27 20 40C8 53 11 72 27 72C38 72 42 63 48 62C67 65 76 49 63 36C75 18 60 3 47 10C38 15 37 8 27 8Z" stroke="currentColor" stroke-width="4"/><path d="M28 22L51 56M23 34L43 62M39 17L60 45M22 52L52 22M27 63L59 32" stroke="currentColor" stroke-width="2" opacity=".55"/></svg>
+      <h1>Арахис</h1>
+      <div class="boot-progress" aria-hidden="true"></div>
+      <p id="boot-message">Собираем ваши планы…</p>
+      <button id="boot-retry" hidden onclick="location.reload()">Попробовать снова</button>
+      <noscript>Для работы приложения включите JavaScript.</noscript>
+    </div>
+    <script>
+      window.__bootTimer = setTimeout(function () {
+        var message = document.getElementById('boot-message');
+        if (message) message.textContent = navigator.onLine ? 'Загрузка затянулась. Попробуйте ещё раз.' : 'Нет интернета. Проверьте подключение.';
+        var retry = document.getElementById('boot-retry');
+        if (retry) retry.hidden = false;
+      }, 12000);
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
