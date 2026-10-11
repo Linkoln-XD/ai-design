@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: arachis
+      POSTGRES_PASSWORD: arachis
+      POSTGRES_DB: arachis
+    ports:
+      - "5432:5432"
+    volumes:
+      # PostgreSQL 18 хранит кластер в подкаталоге этого пути.
+      - arachis_postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arachis -d arachis"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://arachis:arachis@postgres:5432/arachis
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  admin:
+    image: node:22-bookworm
+    working_dir: /src
+    volumes:
+      - ./admin:/src
+      - admin_node_modules:/src/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      CHOKIDAR_USEPOLLING: "1"
+    command: ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0 --port 5173"]
+    depends_on:
+      - api
+
+volumes:
+  arachis_postgres:
+  admin_node_modules:
